@@ -1,0 +1,13 @@
+window_start_s,window_end_s,role,channel,filter,lowcut_hz,highcut_hz,filter_order
+60.0,90.0,processed & written to output,IR1,Butterworth bandpass,0.5,5.0,3
+60.0,90.0,processed & written to output,RED1,Butterworth bandpass,0.5,5.0,3
+60.0,90.0,processed & written to output,IR2,Butterworth bandpass,0.5,5.0,3
+60.0,90.0,processed & written to output,RED2,Butterworth bandpass,0.5,5.0,3
+90.0,120.0,processed & written to output,IR1,Butterworth bandpass,0.5,5.0,3
+90.0,120.0,processed & written to output,RED1,Butterworth bandpass,0.5,5.0,3
+90.0,120.0,processed & written to output,IR2,Butterworth bandpass,0.5,5.0,3
+90.0,120.0,processed & written to output,RED2,Butterworth bandpass,0.5,5.0,3
+120.0,126.366000001,processed & written to output,IR1,Butterworth bandpass,0.5,5.0,3
+120.0,126.366000001,processed & written to output,RED1,Butterworth bandpass,0.5,5.0,3
+120.0,126.366000001,processed & written to output,IR2,Butterworth bandpass,0.5,5.0,3
+120.0,126.366000001,processed & written to output,RED2,Butterworth bandpass,0.5,5.0,3

@@ -1,0 +1,65 @@
+{
+  "summary": {
+    "prediction": "ALERT",
+    "reason": "",
+    "drowsy_detected": false,
+    "first_alarm_s": null,
+    "n_windows": 76,
+    "pct_valid": 77.63157894736842,
+    "state_pct": {
+      "ALERT": 77.63157894736842,
+      "HOLD": 22.36842105263158
+    },
+    "max_S": 1.5785103445115594,
+    "baseline": 0.10269336911003892,
+    "sigma": 0.4670993664969138,
+    "sigma_floor": 0.4670993664969138,
+    "sigma_learned": 0.32132063573680975,
+    "n_learn": 13
+  },
+  "info": {
+    "signal_column": "IVW_SSQI_RED_Fused",
+    "channel_usable_frac": {
+      "IR": 0.8985042735042735,
+      "RED": 0.9230769230769231
+    },
+    "fs_estimated_hz": 25.0,
+    "duration_s": 941.0,
+    "quality_mode": "step2-labels",
+    "ssqi_median": -0.03698659858717166,
+    "polarity": "normal",
+    "n_beats": 1126,
+    "beats_rejected_morphology": 0,
+    "beats_rejected_quality": 81,
+    "n_intervals_used": 1030
+  },
+  "config": {
+    "window_s": 60.0,
+    "hop_s": 10.0,
+    "lf_band": [
+      0.04,
+      0.15
+    ],
+    "hf_band": [
+      0.15,
+      0.4
+    ],
+    "f_step": 0.0025,
+    "min_intervals": 30,
+    "min_coverage": 0.7,
+    "max_gap_s": 10.0,
+    "max_dev": 0.3,
+    "learn_s": 180.0,
+    "min_learn_windows": 5,
+    "k": 0.5,
+    "h": 4.0,
+    "h_off_frac": 0.3,
+    "suspect_frac": 0.5,
+    "s_cap_mult": 2.0,
+    "direction": "down",
+    "no_signal_s": 120.0,
+    "min_alarm_s": 60.0,
+    "min_valid_pct": 40.0,
+    "enbw": 1.0
+  }
+}

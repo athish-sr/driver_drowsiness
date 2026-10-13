@@ -1,0 +1,50 @@
+{
+  "summary": {
+    "prediction": "DROWSY",
+    "reason": "",
+    "drowsy_detected": true,
+    "first_alarm_s": 699.0029999999985,
+    "n_windows": 390,
+    "pct_valid": 57.948717948717956,
+    "state_pct": {
+      "ALERT": 37.17948717948718,
+      "HOLD": 24.358974358974358,
+      "DROWSY": 19.230769230769234,
+      "SUSPECT": 10.76923076923077,
+      "NO_SIGNAL": 8.461538461538462
+    },
+    "max_S": 58.63503771963827,
+    "final_alarm_level": 32.124347482539775
+  },
+  "info": {
+    "signal_column": "IVW_SSQI_RED_Fused",
+    "channel_usable_frac": {
+      "IR": 0.7959667852906287,
+      "RED": 0.8018979833926453
+    },
+    "fs_estimated_hz": 25.0,
+    "duration_s": 847.2,
+    "quality_mode": "step2-labels",
+    "ssqi_median": 0.16947332062932807,
+    "gate_counts": {
+      "ok": 702,
+      "too_few_samples": 141
+    },
+    "label_counts": {
+      "excellent": 650,
+      "bad": 167,
+      "good": 26
+    },
+    "polarity": "normal",
+    "n_beats": 807,
+    "beats_rejected_morphology": 2,
+    "beats_rejected_quality": 144,
+    "n_intervals_used": 624,
+    "warmup_s": 30.0,
+    "window_s": 10.446262098744674,
+    "step_s": 2.1,
+    "baseline_hr_bpm": 62.8,
+    "baseline_rmssd_ms": 61.1,
+    "hrv_used": true
+  }
+}

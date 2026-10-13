@@ -1,0 +1,47 @@
+{
+  "summary": {
+    "prediction": "ALERT",
+    "reason": "",
+    "drowsy_detected": false,
+    "first_alarm_s": null,
+    "n_windows": 455,
+    "pct_valid": 86.15384615384616,
+    "state_pct": {
+      "ALERT": 86.15384615384616,
+      "HOLD": 13.626373626373626,
+      "NO_SIGNAL": 0.21978021978021978
+    },
+    "max_S": 7.540983537013618,
+    "final_alarm_level": 25.0
+  },
+  "info": {
+    "signal_column": "IVW_SSQI_RED_Fused",
+    "channel_usable_frac": {
+      "IR": 0.8985042735042735,
+      "RED": 0.9230769230769231
+    },
+    "fs_estimated_hz": 25.0,
+    "duration_s": 941.0,
+    "quality_mode": "step2-labels",
+    "ssqi_median": -0.03698659858717166,
+    "gate_counts": {
+      "ok": 936
+    },
+    "label_counts": {
+      "excellent": 559,
+      "good": 305,
+      "bad": 72
+    },
+    "polarity": "normal",
+    "n_beats": 1126,
+    "beats_rejected_morphology": 0,
+    "beats_rejected_quality": 81,
+    "n_intervals_used": 1030,
+    "warmup_s": 31.0,
+    "window_s": 9.986466250947421,
+    "step_s": 2.0,
+    "baseline_hr_bpm": 74.0,
+    "baseline_rmssd_ms": 38.1,
+    "hrv_used": true
+  }
+}
