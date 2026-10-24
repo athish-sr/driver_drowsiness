@@ -27,7 +27,8 @@ env/
 *_output/
 *_output_*/
 *outputs*/
-*tests
+!tests/
+!tests/**
 # ──────────────────────────────────────────────
 # Generated output files (inside pipeline dirs
 # or dropped in the project root)
