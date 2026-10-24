@@ -22,18 +22,39 @@ The paper does NOT give the reference values, so here they are learned from a
 short "alert" calibration window at the start of the recording (per driver),
 and the thresholds are expressed as ratios of that baseline.
 
+Preprocessing (stages 1-4)
+---------------------------
+Reuses the same pipeline as TImeDynamic_v2.py:
+  Stage 1  dual_process.py       Butterworth + adaptive Savitzky-Golay
+  Stage 2  dual_ssqi.py          per-channel S_SQI quality scoring
+  Stage 3  dual_fusion.py        IVW / IVW+SSQI sensor fusion
+The fused column (IVW_SSQI_IR_Fused or IVW_SSQI_RED_Fused) is then fed into
+this file's own detector.
+
 Usage
 -----
-    python ppg_drowsiness.py ppg_fusion_output.csv
+    python TimeStatic.py recording.csv
+    python TimeStatic.py recording.csv --channel RED
+    python TimeStatic.py recording.csv --method IVW
+    python TimeStatic.py recording.csv --workdir out_dir --reuse
+    python TimeStatic.py --from-fusion ppg_fusion_results.csv
 """
 from __future__ import annotations
 
+import argparse
+import json
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from scipy.signal import butter, filtfilt, find_peaks
+
+# reuse stages 1-4 and PipelineError from TImeDynamic_v2
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import TImeDynamic_v2 as TD  # noqa: E402
+from TImeDynamic_v2 import PipelineError  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -168,19 +189,156 @@ def run_pipeline(t_raw, x_raw, cfg: Config | None = None):
                 det=det, result=res)
 
 
-def load_csv(path: str, channel: str = "IR"):
-    df = pd.read_csv(path)
-    col = {"IR": "IR Fusion", "RED": "RED Fusion"}[channel]
-    return df["Elapsed_s"].values, df[col].values
+def load_fusion_csv(fusion_csv: Path, channel: str = "auto", method: str = "IVW_SSQI"):
+    """Load elapsed time + the chosen fused column from a dual_fusion.py output file."""
+    df = pd.read_csv(fusion_csv)
+    df.columns = df.columns.str.strip()
+    col_map = {
+        "IR":  f"{method}_IR_Fused",
+        "RED": f"{method}_RED_Fused",
+    }
+    if channel == "auto":
+        # pick whichever fused column is present; prefer IR
+        for ch in ("IR", "RED"):
+            col = col_map[ch]
+            if col in df.columns:
+                chosen_col = col
+                break
+        else:
+            raise PipelineError(
+                f"No fused column found in {fusion_csv}. Columns: {list(df.columns)}"
+            )
+    else:
+        chosen_col = col_map[channel]
+        if chosen_col not in df.columns:
+            raise PipelineError(
+                f"Column '{chosen_col}' not found in {fusion_csv}. "
+                f"Available: {list(df.columns)}"
+            )
+    return df["Elapsed_s"].values, df[chosen_col].values, chosen_col
+
+
+def analyze_fusion_csv(fusion_csv, channel="auto", method="IVW_SSQI",
+                       cfg: Config | None = None, plot=None):
+    """Stages 4-5: run detector on an existing fusion CSV."""
+    cfg = cfg or Config()
+    t_raw, x_raw, col = load_fusion_csv(Path(fusion_csv), channel, method)
+    out = run_pipeline(t_raw, x_raw, cfg)
+    d = out["det"]
+    result = out["result"]
+
+    print(f"Signal column      : {col}")
+    print(f"Reference (alert)  : mean PP = {d.ref_mean:.3f} s "
+          f"({60/d.ref_mean:.1f} bpm),  SD = {d.ref_disp*1000:.1f} ms")
+    print(result.round(3).to_string(index=False))
+    print("\nDrowsiness detected:", bool(result["drowsy"].any()))
+
+    if plot:
+        _plot(out, plot)
+    return out
+
+
+def analyze(raw_csv, workdir=None, scripts_dir=None, channel="auto", method="IVW_SSQI",
+            reuse=False, cfg: Config | None = None, plot=None, log=print):
+    """Full pipeline: raw CSV -> stages 1-3 (via TImeDynamic_v2) -> detector."""
+    raw_csv = Path(raw_csv)
+    scripts_dir = (Path(scripts_dir) if scripts_dir
+                   else Path(__file__).resolve().parent.parent)
+    workdir = Path(workdir) if workdir else Path(f"{raw_csv.stem}_pipeline")
+
+    fusion_csv = TD.run_stages_1_to_3(raw_csv, workdir, scripts_dir, reuse, log)
+    log("[4/5] detector (TimeStatic threshold model)")
+    return analyze_fusion_csv(fusion_csv, channel, method, cfg, plot)
+
+
+def _plot(out: dict, path: str):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    t, xf = out["t"], out["xf"]
+    pk_t = out["peak_t"]
+    pk_y = np.interp(pk_t, t, xf)
+    res = out["result"]
+
+    fig, axes = plt.subplots(3, 1, figsize=(13, 8), sharex=True)
+
+    axes[0].plot(t, xf, lw=0.7, label="fused PPG (filtered)")
+    axes[0].plot(pk_t, pk_y, "g.", ms=4, label="detected beat")
+    axes[0].set_ylabel("amplitude"); axes[0].legend(fontsize=7)
+
+    axes[1].plot(res["t"], res["hr_bpm"], "k-", label="window HR (bpm)")
+    axes[1].axhline(60 / out["det"].ref_mean, color="g", ls="--", label="ref HR")
+    axes[1].set_ylabel("bpm"); axes[1].legend(fontsize=7)
+
+    axes[2].step(res["t"], res["drowsy"].astype(int), where="post", color="red")
+    axes[2].set_yticks([0, 1]); axes[2].set_yticklabels(["ALERT", "DROWSY"])
+    axes[2].set_xlabel("time (s)")
+
+    for ax in axes:
+        for _, row in res[res["drowsy"]].iterrows():
+            ax.axvspan(row["t"] - 2, row["t"], color="red", alpha=0.12, lw=0)
+
+    title = "DROWSY" if bool(res["drowsy"].any()) else "ALERT"
+    fig.suptitle(f"TimeStatic threshold detector — {title}")
+    fig.tight_layout()
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
 
 
 if __name__ == "__main__":
-    path = sys.argv[1] if len(sys.argv) > 1 else "ppg_fusion_output.csv"
-    t_raw, x_raw = load_csv(path, "IR")
-    out = run_pipeline(t_raw, x_raw)
-    d = out["det"]
-    print(f"Reference (alert) mean PP = {d.ref_mean:.3f} s  "
-          f"({60/d.ref_mean:.1f} bpm), SD = {d.ref_disp*1000:.1f} ms")
-    r = out["result"]
-    print(r.round(3).to_string(index=False))
-    print("\nDrowsiness detected:", bool(r["drowsy"].any()))
+    ap = argparse.ArgumentParser(
+        description="TimeStatic: Liu et al. threshold detector on dual-PPG pipeline"
+    )
+    ap.add_argument("csv", nargs="?", help="raw recording CSV")
+    ap.add_argument("--from-fusion",
+                    help="skip stages 1-3: provide dual_fusion.py output directly")
+    ap.add_argument("--workdir",
+                    help="folder for pipeline intermediates (default: <csv stem>_pipeline)")
+    ap.add_argument("--scripts-dir",
+                    help="folder holding dual_process.py etc. (default: MainProject root)")
+    ap.add_argument("--channel", choices=["auto", "IR", "RED"], default="auto")
+    ap.add_argument("--method", choices=["IVW_SSQI", "IVW"], default="IVW_SSQI")
+    ap.add_argument("--reuse", action="store_true",
+                    help="reuse stage outputs already in workdir")
+    ap.add_argument("--no-plot", action="store_true")
+    a = ap.parse_args()
+
+    if not a.csv and not a.from_fusion:
+        ap.error("provide a raw CSV or --from-fusion")
+
+    try:
+        if a.from_fusion:
+            src = Path(a.from_fusion)
+            out_dir = Path(a.workdir) if a.workdir else src.parent
+            out_dir.mkdir(parents=True, exist_ok=True)
+            stem = src.stem
+            plot_path = None if a.no_plot else str(out_dir / f"{stem}_static_report.png")
+            result = analyze_fusion_csv(src, a.channel, a.method, None, plot_path)
+        else:
+            src = Path(a.csv)
+            out_dir = Path(a.workdir) if a.workdir else Path(f"{src.stem}_pipeline")
+            stem = src.stem
+            plot_path = None if a.no_plot else str(out_dir / f"{stem}_static_report.png")
+            result = analyze(src, out_dir, a.scripts_dir, a.channel, a.method,
+                             a.reuse, None, plot_path)
+
+        res_df = result["result"]
+        out_dir.mkdir(parents=True, exist_ok=True)
+        res_df.to_csv(out_dir / f"{stem}_static_windows.csv", index=False)
+        summary = {
+            "drowsy_detected": bool(res_df["drowsy"].any()),
+            "prediction": "DROWSY" if bool(res_df["drowsy"].any()) else "ALERT",
+            "ref_mean_pp_s": round(float(result["det"].ref_mean), 4),
+            "ref_hr_bpm": round(60 / float(result["det"].ref_mean), 1),
+            "ref_disp_ms": round(float(result["det"].ref_disp) * 1000, 2),
+        }
+        (out_dir / f"{stem}_static_summary.json").write_text(
+            json.dumps(summary, indent=2)
+        )
+        print(f"\nsaved to: {out_dir}")
+
+    except PipelineError as e:
+        sys.exit(f"PIPELINE ERROR: {e}")
+    except ValueError as e:
+        sys.exit(f"ERROR: {e}")

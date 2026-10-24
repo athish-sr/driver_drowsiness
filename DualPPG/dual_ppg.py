@@ -8,14 +8,14 @@ from datetime import datetime
 # SERIAL CONFIGURATION
 # ============================================================
 
-SERIAL_PORT = "COM9"
-BAUD_RATE = 115200
+SERIAL_PORT = os.environ.get("DUAL_PPG_SERIAL_PORT", "COM9")
+BAUD_RATE = int(os.environ.get("DUAL_PPG_BAUD_RATE", "115200"))
 
 # ============================================================
 # CSV FILE
 # ============================================================
 
-OUTPUT_FILE = "dual_max30102_data.csv"
+OUTPUT_FILE = os.environ.get("DUAL_PPG_OUTPUT_FILE", "dual_max30102_data.csv")
 
 CSV_HEADER = [
     "Clock Time",
