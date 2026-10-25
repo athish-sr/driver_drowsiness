@@ -266,6 +266,36 @@ def quality_lookup(q: pd.DataFrame, usable: pd.Series):
     return f
 
 
+def ssqi_lookup(q: pd.DataFrame):
+    """f(times) -> mean S_SQI value across stage-4 windows covering each time."""
+    if q.empty:
+        return lambda tt: np.full(len(np.atleast_1d(tt)), STATIC_BAD_CUT)
+    starts = q["seg_start_s"].to_numpy(float)
+    seg = float((q["seg_end_s"] - q["seg_start_s"]).iloc[0])
+    s_col = "SSQI" if "SSQI" in q.columns else "ssqi"
+    vals = q[s_col].fillna(STATIC_BAD_CUT).to_numpy(float)
+    cs = np.concatenate([[0.0], np.cumsum(vals)])
+
+    def f(tt):
+        tt = np.asarray(tt, float)
+        scalar = tt.ndim == 0
+        tt_arr = np.atleast_1d(tt)
+        i0 = np.searchsorted(starts, tt_arr - seg + 1e-9, "right")
+        i1 = np.searchsorted(starts, tt_arr + 1e-9, "right")
+        n = i1 - i0
+        with np.errstate(invalid="ignore", divide="ignore"):
+            res = np.where(n > 0, (cs[i1] - cs[i0]) / np.maximum(n, 1), STATIC_BAD_CUT)
+        return float(res[0]) if scalar else res
+    return f
+
+
+def ssqi_to_weight(ssqi_val, s_bad=STATIC_BAD_CUT, s_target=0.15, w_min=0.05):
+    """Map S_SQI to continuous quality weight in [w_min, 1.0]."""
+    s = np.asarray(ssqi_val, float)
+    w = (s - s_bad) / max(1e-6, (s_target - s_bad))
+    return np.clip(w, w_min, 1.0)
+
+
 # =========================================================================== #
 # Beats (stage 5a)
 # =========================================================================== #
@@ -345,7 +375,7 @@ def _regularity(pk_t):
     return float(np.median(np.abs(np.diff(pp))) / np.median(pp))
 
 
-def extract_beats(t_raw, x_raw, fs, qual_fn=None, p: Priors = P):
+def extract_beats(t_raw, x_raw, fs, qual_fn=None, p: Priors = P, ssqi_fn=None):
     """Beats from the (already filtered + fused) waveform. Inter-beat intervals are kept only
     if both beats have normal morphology, the interval is physiological, and stage 4 judged
     the signal usable at both ends. (Intervals are identical for either polarity; polarity only
@@ -373,7 +403,7 @@ def extract_beats(t_raw, x_raw, fs, qual_fn=None, p: Priors = P):
     q_ok = np.where(np.isnan(qv), False, qv >= p.q_min_cover)
 
     lo, hi = 60 / p.hr_range_bpm[1], 60 / p.hr_range_bpm[0]
-    t_pp, pp = [], []
+    t_pp, pp, ssqi_pp, w_pp = [], [], [], []
     for i in range(1, len(pk_t)):
         d = pk_t[i] - pk_t[i - 1]
         if not (good[i] and good[i - 1] and q_ok[i] and q_ok[i - 1] and lo <= d <= hi):
@@ -382,19 +412,29 @@ def extract_beats(t_raw, x_raw, fs, qual_fn=None, p: Priors = P):
             continue
         t_pp.append(pk_t[i])
         pp.append(d)
+        if ssqi_fn is not None:
+            s_val = float(0.5 * (ssqi_fn(pk_t[i - 1]) + ssqi_fn(pk_t[i])))
+        else:
+            s_val = 0.0
+        ssqi_pp.append(s_val)
+        w_pp.append(float(ssqi_to_weight(s_val)))
     info = dict(polarity="inverted" if sgn < 0 else "normal", n_beats=len(pk_t),
                 beats_rejected_morphology=int((~good).sum()),
                 beats_rejected_quality=int((~q_ok).sum()), n_intervals_used=len(pp))
-    return dict(t=t, xf=xf, pk_t=pk_t, good=good, q_ok=q_ok, t_pp=np.array(t_pp), pp=np.array(pp), info=info)
+    return dict(t=t, xf=xf, pk_t=pk_t, good=good, q_ok=q_ok,
+                t_pp=np.array(t_pp), pp=np.array(pp),
+                ssqi=np.array(ssqi_pp), weights=np.array(w_pp),
+                info=info)
 
 
 # =========================================================================== #
 # Window features (stage 5b)
 # =========================================================================== #
-def window_features(t_pp, pp, te, win, p: Priors = P):
+def window_features(t_pp, pp, te, win, p: Priors = P, weights=None):
     m = (t_pp > te - win) & (t_pp <= te)
     q, tt = pp[m], t_pp[m]
-    out = dict(valid=False, mean=np.nan, lrmssd=np.nan, good_frac=0.0, n=int(len(q)))
+    w = weights[m] if weights is not None else np.ones(len(q))
+    out = dict(valid=False, mean=np.nan, lrmssd=np.nan, good_frac=0.0, n=int(len(q)), mean_w=1.0)
     if len(q) < 4:
         return out
     med = np.median(q)
@@ -403,27 +443,43 @@ def window_features(t_pp, pp, te, win, p: Priors = P):
     if keep.sum() < p.min_beats or out["good_frac"] < p.min_good_frac:
         return out
     out["valid"] = True
-    out["mean"] = float(np.mean(q[keep]))
+    q_k = q[keep]
+    w_k = w[keep]
+    w_sum = float(np.sum(w_k))
+    out["mean_w"] = float(np.mean(w_k)) if len(w_k) else 1.0
+    out["mean"] = float(np.sum(w_k * q_k) / w_sum) if w_sum > 0 else float(np.mean(q_k))
     idx = np.where(keep)[0]
     a, b = idx[:-1], idx[1:]
     consec = (b - a == 1) & (np.abs((tt[b] - tt[a]) - q[b]) < 0.15 * q[b])
     d = (q[b] - q[a])[consec]
-    if len(d) >= 4:
-        out["lrmssd"] = float(np.log(max(np.sqrt(np.mean(d ** 2)), 1e-3)))
+    w_pairs = np.sqrt(w[a][consec] * w[b][consec]) if len(d) else np.array([])
+    if len(d) >= 4 and np.sum(w_pairs) > 0:
+        weighted_var = np.sum(w_pairs * (d ** 2)) / np.sum(w_pairs)
+        out["lrmssd"] = float(np.log(max(np.sqrt(weighted_var), 1e-3)))
     return out
 
 
-def _calib_stats(t_pp, pp, t_lo, t_hi):
+def _calib_stats(t_pp, pp, t_lo, t_hi, weights=None):
     m = (t_pp >= t_lo) & (t_pp < t_hi)
     q, tt = pp[m], t_pp[m]
+    w = weights[m] if weights is not None else np.ones(len(q))
     med = np.median(q)
     keep = np.abs(q - med) <= P.max_dev * med
+    q_k = q[keep]
+    w_k = w[keep]
+    w_sum = float(np.sum(w_k))
+    mean_ibi = float(np.sum(w_k * q_k) / w_sum) if w_sum > 0 else float(np.mean(q_k))
     idx = np.where(keep)[0]
     a, b = idx[:-1], idx[1:]
     consec = (b - a == 1) & (np.abs((tt[b] - tt[a]) - q[b]) < 0.15 * q[b])
     d = (q[b] - q[a])[consec]
-    lr = float(np.log(np.sqrt(np.mean(d ** 2)))) if len(d) >= 4 else np.nan
-    return float(np.mean(q[keep])), lr, int(keep.sum())
+    w_pairs = np.sqrt(w[a][consec] * w[b][consec]) if len(d) else np.array([])
+    if len(d) >= 4 and np.sum(w_pairs) > 0:
+        weighted_var = np.sum(w_pairs * (d ** 2)) / np.sum(w_pairs)
+        lr = float(np.log(np.sqrt(weighted_var)))
+    else:
+        lr = np.nan
+    return mean_ibi, lr, int(keep.sum())
 
 
 # =========================================================================== #
@@ -431,16 +487,18 @@ def _calib_stats(t_pp, pp, t_lo, t_hi):
 # =========================================================================== #
 def run_detector(beats: dict, fs: float, t0: float, t_end: float, p: Priors = P):
     t_pp, pp = beats["t_pp"], beats["pp"]
+    weights = beats.get("weights", np.ones(len(pp)))
     info = {}
     t_warm = None
     for te in np.arange(t0 + p.warmup_min_s, t_end, 1.0):
-        if ((t_pp >= t0) & (t_pp < te)).sum() >= p.warmup_min_beats:
+        in_warm = (t_pp >= t0) & (t_pp < te)
+        if weights[in_warm].sum() >= p.warmup_min_beats:
             t_warm = te
             break
-    if t_warm is None or (t_pp < t_warm).sum() < 8:
+    if t_warm is None or weights[t_pp < t_warm].sum() < 8.0:
         return None, {"error": "too short / too few clean beats to learn a baseline "
-                               f"(need >= {p.warmup_min_s:.0f} s with >= {p.warmup_min_beats} clean beats)"}, None
-    b_m, b_lr, n_cal = _calib_stats(t_pp, pp, t0, t_warm)
+                               f"(need >= {p.warmup_min_s:.0f} s with >= {p.warmup_min_beats} quality-weighted beats)"}, None
+    b_m, b_lr, n_cal = _calib_stats(t_pp, pp, t0, t_warm, weights=weights)
     if np.isnan(b_lr):
         b_lr = np.log(0.03)
     win = float(np.clip(p.win_beats * b_m, *p.win_clip_s))
@@ -458,7 +516,7 @@ def run_detector(beats: dict, fs: float, t0: float, t_end: float, p: Priors = P)
     settled = False
     rows = []
     for te in np.arange(t_warm, t_end, step):
-        f = window_features(t_pp, pp, te, win, p)
+        f = window_features(t_pp, pp, te, win, p, weights=weights)
         h_on = max(p.h_floor, p.h_mult * M)
         if not f["valid"]:
             state = "NO_SIGNAL" if te - last_valid_t > p.no_signal_s else ("DROWSY" if alarm else "HOLD")
@@ -509,11 +567,12 @@ def run_detector(beats: dict, fs: float, t0: float, t_end: float, p: Priors = P)
         if looks_alert and S < p.suspect_frac * p.h_floor:
             M = max(M, S)
         if looks_alert and not learning:
-            var_m = (1 - alpha) * var_m + alpha * (f["mean"] - b_m) ** 2
-            b_m += alpha * (f["mean"] - b_m)
+            alpha_eff = alpha * f.get("mean_w", 1.0)
+            var_m = (1 - alpha_eff) * var_m + alpha_eff * (f["mean"] - b_m) ** 2
+            b_m += alpha_eff * (f["mean"] - b_m)
             if not np.isnan(f["lrmssd"]) and hrv_ok:
-                var_lr = (1 - alpha) * var_lr + alpha * (f["lrmssd"] - b_lr) ** 2
-                b_lr += alpha * (f["lrmssd"] - b_lr)
+                var_lr = (1 - alpha_eff) * var_lr + alpha_eff * (f["lrmssd"] - b_lr) ** 2
+                b_lr += alpha_eff * (f["lrmssd"] - b_lr)
         state = "DROWSY" if alarm else ("SUSPECT" if S >= p.suspect_frac * h_on else "ALERT")
         rows.append(dict(t=te, valid=True, state=state, S=S, alarm=alarm, h_on=h_on,
                          b_hr=60 / b_m, hr_bpm=60 / f["mean"], score=score, z_hr=z_hr, z_hrv=z_hrv,
@@ -609,7 +668,8 @@ def analyze_fusion_csv(fusion_csv, scripts_dir=None, channel="auto", method="IVW
         return Report(pd.DataFrame(), pd.DataFrame(), summary, info)
 
     qfn = quality_lookup(qc["q"], qc["usable"])
-    b = extract_beats(t, df[qc["col"]].to_numpy(float), fs, qfn, p)
+    sfn = ssqi_lookup(qc["q"])
+    b = extract_beats(t, df[qc["col"]].to_numpy(float), fs, qfn, p, ssqi_fn=sfn)
     info.update(b["info"])
     t0, t_end = b["t"][0], b["t"][-1]
     win_df, dinfo, t_warm = run_detector(b, fs, t0, t_end, p)

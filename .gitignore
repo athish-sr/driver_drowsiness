@@ -98,3 +98,10 @@ desktop.ini
 *.log
 *.tmp
 *.bak
+
+# ──────────────────────────────────────────────
+# Project Documentation & Custom Runners
+# ──────────────────────────────────────────────
+BASELINE_ADAPTATION_COMPARISON.md
+PROJECT_SYSTEM_REPORT.md
+run_fusion_drowsiness_dataset.py
