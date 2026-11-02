@@ -1,0 +1,8 @@
+2026-11-02T09:49:26.973 DISPLAY: TD metrics | HR=69.1 bpm | evidence=0.00 | score=0.25 | state=ALERT
+2026-11-02T09:49:26.974 [5/5] frequency-domain detector (reusing generated fused data)
+2026-11-02T09:49:29.030 DISPLAY: Freq metrics | HR=nan bpm | evidence=0.82 | score=nan | state=NO_SIGNAL
+2026-11-02T09:49:29.037 DISPLAY: RESULTS | TD=DROWSY | Freq=INSUFFICIENT_DATA | Fused=SUSPECT
+2026-11-02T09:51:57.018 DISPLAY: TD metrics | HR=69.1 bpm | evidence=0.00 | score=0.25 | state=ALERT
+2026-11-02T09:51:57.019 [5/5] frequency-domain detector (reusing generated fused data)
+2026-11-02T09:51:59.210 DISPLAY: Freq metrics | HR=nan bpm | evidence=0.82 | score=nan | state=NO_SIGNAL
+2026-11-02T09:51:59.216 DISPLAY: RESULTS | TD=DROWSY | Freq=INSUFFICIENT_DATA | Fused=DROWSY

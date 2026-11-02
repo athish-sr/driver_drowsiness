@@ -1,0 +1,14 @@
+{
+  "file": "dual_max30102_realtime_ble",
+  "processed_at": "2026-11-02T09:51:59.217842",
+  "time_domain_prediction": "DROWSY",
+  "frequency_domain_prediction": "INSUFFICIENT_DATA",
+  "fused_state": "DROWSY",
+  "fused_alarm_active": true,
+  "reason_code": "ALARM_LATCHED",
+  "reason": "Fused alarm is active; awaiting recovery from all relevant detectors.",
+  "active_alarm_sources": [
+    "time_domain"
+  ],
+  "metadata": {}
+}

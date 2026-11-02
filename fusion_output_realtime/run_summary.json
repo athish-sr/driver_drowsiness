@@ -1,0 +1,13 @@
+{
+  "run_at": "2026-11-02T11:17:06.855667",
+  "results": [
+    {
+      "file": "dual_max30102_realtime_ble_20261102_111413",
+      "td_prediction": "INSUFFICIENT_DATA",
+      "freq_prediction": "INSUFFICIENT_DATA",
+      "fused_state": "INSUFFICIENT_DATA",
+      "freq_reason": "0 valid learning windows = 0.0 independent (need 3); the model needs >= 180 s of baseline plus at least one 60 s window after the pipeline's 60 s start-up skip (recording is 88 s)",
+      "elapsed_s": 20.0
+    }
+  ]
+}
